@@ -4,12 +4,15 @@ import pandas as pd
 def get_spotify_data(sp, sp_call):
     res = sp_call
     data = res["items"]
+    print("DEBUG: initial calls")
     while res["next"]:
         res = sp.next(res)
         data.extend(res["items"])
     if data[0]["type"] == "artist":
         data = process_artist_data(data)
     elif data[0]["type"] == "track":
+        data = process_track_data(sp, data)
+    else:
         data = process_track_data(sp, data)
     return data
 
@@ -19,7 +22,7 @@ def get_playlist_tracks(sp, data):
     playlists = data
 
     playlist_tracks = pd.DataFrame()
-
+    print("DEBUG: initial calls")
     for playlist in playlists:
         res = sp.playlist(playlist["id"], fields="tracks,next")
         res = res["tracks"]
@@ -28,10 +31,11 @@ def get_playlist_tracks(sp, data):
         while res["next"]:
             res = sp.next(res)
             data.extend(res["items"])
+
         tracks = process_track_data(sp, data)
         tracks["playlist_id"] = playlist["id"]
         tracks["playlist_name"] = playlist["name"]
-        playlist_tracks = playlist_tracks.append(tracks)
+        playlist_tracks = pd.concat([playlist_tracks, tracks])
 
     return playlist_tracks
 
@@ -42,11 +46,13 @@ def process_artist_data(data):
 
 
 def process_track_data(sp, data):
-    # Only grabs one artist, and one genre - genres might turn out funny
+    print("DEBUG: processing track data")
     df = pd.DataFrame(data)
 
     if "track" in df.columns.tolist():
-        df = df.drop("track", 1).assign(**df["track"].apply(pd.Series))
+        df = df.drop("track", axis=1).assign(**df["track"].apply(pd.Series))
+
+    df = df.drop_duplicates(subset="id", keep="first")
 
     df["album_id"] = df["album"].apply(lambda x: x["id"])
     df["album_name"] = df["album"].apply(lambda x: x["name"])
@@ -76,12 +82,31 @@ def process_track_data(sp, data):
 
     # additional calls for more data
 
-    df["artist_genres"] = df["artist_id"].apply(lambda x: sp.artist(x)["genres"])
+    # batch API calls for audio_features and artist genres
+    track_ids = df["id"].tolist()
+    artist_ids = df["artist_id"].tolist()
+    batch_size = 50
 
-    df["audio_features"] = df["id"].apply(lambda x: sp.audio_features(x))
-    df["audio_features"] = df["audio_features"].apply(pd.Series)
-    df = df.drop("audio_features", 1).assign(**df["audio_features"].apply(pd.Series))
+    audio_features = []
+    artists = []
+
+    for i in range(0, len(track_ids), batch_size):
+        batch_track_ids = track_ids[i : i + batch_size]
+        batch_artist_ids = artist_ids[i : i + batch_size]
+
+        batch_audio_features = sp.audio_features(batch_track_ids)
+        batch_artists = sp.artists(batch_artist_ids)["artists"]
+
+        audio_features.extend(batch_audio_features)
+        artists.extend(batch_artists)
+
+    audio_features_df = pd.DataFrame(audio_features).apply(pd.Series)
+    artists_df = pd.DataFrame(artists)
+
+    df = pd.merge(df, artists_df[["genres", "id"]], on="id", how="left")
+    df = pd.merge(df, audio_features_df, on="id", how="left")
     df = df.drop(["analysis_url", "track_href", "uri", "type"], axis=1)
+
     return df
 
 
@@ -91,7 +116,7 @@ def get_recommendations(sp, tracks):
     """
     data = []
     for track in tracks:
-        res = sp.recommendations(seed_tracks=[track])
+        res = sp.recommendations(seed_tracks=[track], limit=5)
         data.extend(res["tracks"])
 
     return process_track_data(sp, data)

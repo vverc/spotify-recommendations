@@ -44,20 +44,35 @@ def print_full(x):
 """
 
 # get yearly top song playlists
+print("Getting songs from user's yearly Top Song playlists")
 yearly_top_playlists = sp.current_user_playlists()["items"]
 yearly_top_playlists = list(
-    filter(lambda x: x["name"].startswith("Your Top Songs 20"), yearly_top_playlists)
+    filter(lambda x: x["name"].startswith("Your Top Songs"), yearly_top_playlists)
 )
 yearly_top_df = get_playlist_tracks(sp, yearly_top_playlists)
 yearly_top_df.to_pickle("data/yearly_top.pkl")
+
+"""
 # get recent top songs
+print("Getting user's top songs")
 top_songs_df = get_spotify_data(sp, sp.current_user_top_tracks())
 top_songs_df.to_pickle("data/top_songs.pkl")
 # get top artists
+print("Getting user top artists")
 top_artists_df = get_spotify_data(sp, sp.current_user_top_artists())
 top_artists_df.to_pickle("data/top_artists.pkl")
+"""
+print("Getting user's saved songs")
+saved_songs_df = get_spotify_data(sp, sp.current_user_saved_tracks())
+saved_songs_df.to_pickle("data/saved_songs.pkl")
+
+
+"""
 # get recommendations
+
+print("Getting song recommendations from Spotify")
 recommended_songs_df = get_recommendations(
     sp, yearly_top_df.drop_duplicates(subset="id", keep="first")["id"].tolist()
 )
 recommended_songs_df.to_pickle("data/recommendations.pkl")
+"""
