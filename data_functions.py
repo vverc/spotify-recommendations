@@ -8,10 +8,12 @@ def get_spotify_data(sp, sp_call):
     while res["next"]:
         res = sp.next(res)
         data.extend(res["items"])
-    if data[0]["type"] == "artist":
-        data = process_artist_data(data)
-    elif data[0]["type"] == "track":
-        data = process_track_data(sp, data)
+
+    if "type" in data[0]:
+        if data[0]["type"] == "artist":
+            data = process_artist_data(data)
+        elif data[0]["type"] == "track":
+            data = process_track_data(sp, data)
     else:
         data = process_track_data(sp, data)
     return data
